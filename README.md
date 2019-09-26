@@ -14,7 +14,7 @@ In this test you are tasked with creating a simple transactional database.  This
 The expected result of your implementation is any valid listing of transactions and a final state of the accounts given the constraints above.  Solutions which tend to accept more of the provided input transactions are considered better but, the primary focus should be on correctness.
 
 
-![eample1_single_successful_transaction.png]
+![example1_single_successful_transaction.png]
 ![example2_multiple_successful_transactions.png]
 ![example3_sing_failing_transaction.png]
 ![example4_multiple_xactions_that_restore_consistency.png]
