@@ -99,10 +99,11 @@ vector<account_balance> transaction_db::get_balances() const
    vector<account_balance> balances;
    balances.reserve(accounts.size());
 
-   for (const auto& x: accounts) {
-      balances.push_back(x.second);
-   }
-
+   std::transform(accounts.begin(), 
+                  accounts.end(), 
+                  std::back_inserter(balances), 
+                  [] (const auto& pair) { return pair.second; });
+  
    return balances;
 }
 
