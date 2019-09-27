@@ -79,9 +79,13 @@ private:
 transaction_db::transaction_db(const vector<account_balance>& initial_balances): 
                current_transaction(0), accounts(initial_balances.size())
 {
-   for (const auto &x: initial_balances) {
+   std::transform(initial_balances.begin(), initial_balances.end(),
+                  std::inserter(accounts, accounts.end()),
+                  [](const auto& ab) { return std::make_pair(ab.account_id, ab); });
+
+   /*for (const auto &x: initial_balances) {
       accounts[x.account_id] = x;
-   }
+   } */
 }
 
 void transaction_db::push_transaction(const transaction& t)
@@ -99,8 +103,7 @@ vector<account_balance> transaction_db::get_balances() const
    vector<account_balance> balances;
    balances.reserve(accounts.size());
 
-   std::transform(accounts.begin(), 
-                  accounts.end(), 
+   std::transform(accounts.begin(), accounts.end(), 
                   std::back_inserter(balances), 
                   [] (const auto& pair) { return pair.second; });
   
