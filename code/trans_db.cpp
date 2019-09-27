@@ -20,6 +20,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
+#include <memory>
 using namespace std;
 
 struct account_balance {
@@ -34,6 +35,81 @@ struct transfer {
 };
 
 using transaction = vector<transfer>;
+//typedef vector<transfer> transaction;
+/**
+ * @brief Stores the net change for each account in a transaction.
+ *
+ * Reasons:
+ *    Condenses a transaction into a state where the total number of entries is the  number of accounts used.
+ *
+ *    Beneficial 
+ */
+class transaction_log {
+public:
+   transaction_log(const transaction& t, const size_t trans_id);
+   void push_transfer(const transfer& tfer); ///< used for building line by line if desired
+private:
+   const size_t transaction_id;
+   std::unordered_map<size_t, account_balance> log;
+};
+
+
+/**
+ * @brief Transactional database implementation.
+ *
+ * All transactions must be atomic.
+ * A "settle[d]" state cannot contain an account with a negative balance.
+ */
+class transaction_db {
+public:
+   explicit transaction_db(const vector<account_balance>& initial_balances);
+   void push_transaction(const transaction& t);
+   void settle();
+   vector<account_balance> get_balances() const;
+   vector<size_t> get_applied_transactions() const;
+
+private:
+   size_t current_transaction;
+   unordered_map<size_t , account_balance> accounts;
+   vector<unique_ptr<transaction_log>> temp_log; ///< resets after every settle
+   vector<size_t> applied_transactions;
+   
+};
+
+transaction_db::transaction_db(const vector<account_balance>& initial_balances): 
+               current_transaction(0), accounts(initial_balances.size())
+{
+   for (const auto &x: initial_balances) {
+      accounts[x.account_id] = x;
+   }
+}
+
+void transaction_db::push_transaction(const transaction& t)
+{
+
+}
+
+void transaction_db::settle()
+{
+
+}
+
+vector<account_balance> transaction_db::get_balances() const
+{
+   vector<account_balance> balances;
+   balances.reserve(accounts.size());
+
+   for (const auto& x: accounts) {
+      balances.push_back(x.second);
+   }
+
+   return balances;
+}
+
+vector<size_t> transaction_db::get_applied_transactions() const
+{
+
+}
 /**
  *
  * @param initial_balances - the initial balances in the database, see the above datastructures.
@@ -66,7 +142,7 @@ using transaction = vector<transfer>;
  * They will then call get_balances and inspect the results
  */
 auto create_database(const vector<account_balance>& initial_balances ) {
-   return /* return an instantiated class */;
+   return transaction_db(initial_balances);
 }
 
 
@@ -94,7 +170,6 @@ static void print_database( const DB& db, ofstream& fout ) {
 }
 
 int main() {
-   #define fout cout
 
    try {
 
@@ -149,6 +224,7 @@ int main() {
 
        db.settle();
 
+      ofstream fout("out.txt");
        print_transactions(db, fout);
 
        print_database(db, fout);
