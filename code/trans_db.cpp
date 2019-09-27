@@ -109,7 +109,7 @@ vector<account_balance> transaction_db::get_balances() const
 
 vector<size_t> transaction_db::get_applied_transactions() const
 {
-
+   return applied_transactions;
 }
 /**
  *
