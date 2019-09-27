@@ -83,9 +83,6 @@ transaction_db::transaction_db(const vector<account_balance>& initial_balances):
                   std::inserter(accounts, accounts.end()),
                   [](const auto& ab) { return std::make_pair(ab.account_id, ab); });
 
-   /*for (const auto &x: initial_balances) {
-      accounts[x.account_id] = x;
-   } */
 }
 
 void transaction_db::push_transaction(const transaction& t)
