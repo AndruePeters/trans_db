@@ -50,8 +50,14 @@ using transaction = vector<transfer>;
  *    Beneficial 
  */
 class transaction_log {
+   using log_t = std::unordered_map<int, account_balance>;
 public:
+   using const_iterator = log_t::const_iterator;
+
+
    transaction_log(const transaction& t, const size_t trans_id, const std::function<bool(const transfer& xfer)>& validate);
+   const_iterator begin() const {return log.cbegin();};
+   const_iterator end() const { return log.cend();};
    void dump() const {
       for (const auto& x: log) {
          std::cout << "account: " << x.second.account_id << "\tbalance: " << x.second.balance << std::endl;
@@ -61,7 +67,7 @@ public:
 private:
    const size_t transaction_id;
    const std::function<bool(const transfer& xfer)>& validate_transfer;
-   std::unordered_map<int, account_balance> log;
+   log_t log;
 
    void build_log(const transaction& t);
    void add_to_log(const transfer& xfer);
@@ -72,6 +78,7 @@ transaction_log::transaction_log(const transaction& t, const size_t trans_id,con
 {
    build_log(t);
 }
+
 
 // throws std::invalid_argument
 void transaction_log::build_log(const transaction& t)
@@ -125,6 +132,7 @@ public:
    
 private: 
    void push_transfer(const transfer& tfer);
+   void apply_transaction(const transaction_log& tlog);
 
 private:
    size_t current_transaction;
@@ -154,12 +162,20 @@ void transaction_db::push_transaction(const transaction& t)
       };
 
       l = std::make_unique<transaction_log>(transaction_log(t, num, validate));
-
    } catch (std::exception &e) {
       std::cout << "Bad data" << std::endl;
       return; // exit early
    }
+   apply_transaction(*l);
    temp_log.push_back(std::move(l));
+}
+
+void transaction_db::apply_transaction(const transaction_log& tlog)
+{
+   // pair.second is type account_balance
+   for (const auto& accnt: tlog) {
+      accounts[tlog.account_id] += tlog.balance;
+   }
 }
 
 void transaction_db::settle()
