@@ -20,6 +20,8 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
+#include <functional>
+#include <exception>
 #include <memory>
 using namespace std;
 
@@ -46,12 +48,43 @@ using transaction = vector<transfer>;
  */
 class transaction_log {
 public:
-   transaction_log(const transaction& t, const size_t trans_id);
-   void push_transfer(const transfer& tfer); ///< used for building line by line if desired
+   transaction_log(const transaction& t, const size_t trans_id, std::function<bool(const transfer& xfer)> validate);
 private:
    const size_t transaction_id;
-   std::unordered_map<size_t, account_balance> log;
+   void build_log(const transfer& xfer);
+   std::unordered_map<int, account_balance> log;
 };
+
+transaction_log::transaction_log(const transaction& t, const size_t trans_id, std::function<bool(const transfer& xfer)> validate): transaction_id(trans_id)
+{
+   for (const auto& x: t) {
+      // if a single transfer is bad then drop the entire transaction since it should be atomic.
+      if (!validate(x)) {
+         throw std::invalid_argument("Could not validate account.");
+      }
+
+      // if this succeeds then continue to build the log
+      build_log(x);
+   }
+}
+
+void transaction_log::build_log(const transfer& xfer)
+{
+   // if xfer.from exists then add the balance, otherwise create it
+   if (log.count(xfer.from) ) {
+      log[xfer.from].balance -= xfer.amount;
+   } else {
+      log[xfer.from].balance = 0 - xfer.amount;
+   }
+
+   // if xfer.to exists then add the balance, otherwise create it
+   if (log.count(xfer.to)) {
+      log[xfer.to].balance += xfer.amount;
+   } else {
+      log[xfer.to].balance = xfer.amount;
+   }
+}
+
 
 
 /**
@@ -67,12 +100,17 @@ public:
    void settle();
    vector<account_balance> get_balances() const;
    vector<size_t> get_applied_transactions() const;
+   
+private: 
+   void push_transfer(const transfer& tfer);
 
 private:
    size_t current_transaction;
    unordered_map<size_t , account_balance> accounts;
    vector<unique_ptr<transaction_log>> temp_log; ///< resets after every settle
    vector<size_t> applied_transactions;
+
+
    
 };
 
@@ -81,8 +119,7 @@ transaction_db::transaction_db(const vector<account_balance>& initial_balances):
 {
    std::transform(initial_balances.begin(), initial_balances.end(),
                   std::inserter(accounts, accounts.end()),
-                  [](const auto& ab) { return std::make_pair(ab.account_id, ab); });
-
+                  [](const auto& accnt) { return std::make_pair(accnt.account_id, accnt); });
 }
 
 void transaction_db::push_transaction(const transaction& t)
