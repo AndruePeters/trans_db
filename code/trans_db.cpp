@@ -131,7 +131,6 @@ public:
    vector<size_t> get_applied_transactions() const;
    
 private: 
-   void push_transfer(const transfer& tfer);
    void apply_transaction(const transaction_log& tlog);
 
 private:
