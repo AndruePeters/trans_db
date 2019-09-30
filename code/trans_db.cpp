@@ -37,7 +37,8 @@ struct transfer {
 };
 
 using transaction = vector<transfer>;
-//typedef vector<transfer> transaction;
+
+
 /**
  * @brief Stores the net change for each account in a transaction.
  *        transfer {1, 2, 5} equates to account_balance {1, -5} and account_balance {2, 5}.
@@ -58,11 +59,12 @@ public:
    };
 
 private:
-   const std::function<bool(const transfer& xfer)>& validate_transfer;
    const size_t transaction_id;
+   const std::function<bool(const transfer& xfer)>& validate_transfer;
+   std::unordered_map<int, account_balance> log;
+
    void build_log(const transaction& t);
    void add_to_log(const transfer& xfer);
-   std::unordered_map<int, account_balance> log;
 };
 
 transaction_log::transaction_log(const transaction& t, const size_t trans_id,const std::function<bool(const transfer& xfer)>& validate): 
@@ -71,6 +73,7 @@ transaction_log::transaction_log(const transaction& t, const size_t trans_id,con
    build_log(t);
 }
 
+// throws std::invalid_argument
 void transaction_log::build_log(const transaction& t)
 {
    for (const auto& xfer: t) {
