@@ -174,7 +174,7 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
 {
    // pair.second is type account_balance
    for (const auto& accnt: tlog) {
-      accounts[tlog.account_id] += tlog.balance;
+      accounts[accnt.second.account_id].balance += accnt.second.balance;
    }
 }
 
