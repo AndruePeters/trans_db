@@ -40,22 +40,31 @@ using transaction = vector<transfer>;
 //typedef vector<transfer> transaction;
 /**
  * @brief Stores the net change for each account in a transaction.
+ *        transfer {1, 2, 5} equates to account_balance {1, -5} and account_balance {2, 5}.
  *
+ *        Constructor throws std::invalid_argument if input is bad.
  * Reasons:
  *    Condenses a transaction into a state where the total number of entries is the  number of accounts used.
- *
+ *    Average case has less entries to process for rollback.
  *    Beneficial 
  */
 class transaction_log {
 public:
-   transaction_log(const transaction& t, const size_t trans_id, std::function<bool(const transfer& xfer)> validate);
+   transaction_log(const transaction& t, const size_t trans_id, const std::function<bool(const transfer& xfer)>& validate);
+   void dump() const {
+      for (const auto& x: log) {
+         std::cout << "account: " << x.second.account_id << "\tbalance: " << x.second.balance << std::endl;
+      }
+   };
+
 private:
    const size_t transaction_id;
    void build_log(const transfer& xfer);
+   void add_to_log(const transfer& xfer);
    std::unordered_map<int, account_balance> log;
 };
 
-transaction_log::transaction_log(const transaction& t, const size_t trans_id, std::function<bool(const transfer& xfer)> validate): transaction_id(trans_id)
+transaction_log::transaction_log(const transaction& t, const size_t trans_id,const std::function<bool(const transfer& xfer)>& validate): transaction_id(trans_id)
 {
    for (const auto& x: t) {
       // if a single transfer is bad then drop the entire transaction since it should be atomic.
@@ -64,24 +73,26 @@ transaction_log::transaction_log(const transaction& t, const size_t trans_id, st
       }
 
       // if this succeeds then continue to build the log
-      build_log(x);
+      add_to_log(x);
    }
 }
 
-void transaction_log::build_log(const transfer& xfer)
+void transaction_log::add_to_log(const transfer& xfer)
 {
    // if xfer.from exists then add the balance, otherwise create it
    if (log.count(xfer.from) ) {
       log[xfer.from].balance -= xfer.amount;
    } else {
-      log[xfer.from].balance = 0 - xfer.amount;
+      // does not exist, so create
+      log.insert({xfer.from, {xfer.from, 0-xfer.amount}});
    }
 
    // if xfer.to exists then add the balance, otherwise create it
    if (log.count(xfer.to)) {
       log[xfer.to].balance += xfer.amount;
    } else {
-      log[xfer.to].balance = xfer.amount;
+      // does not exist so create
+      log.insert({xfer.to, {xfer.to, xfer.amount}});
    }
 }
 
@@ -95,6 +106,7 @@ void transaction_log::build_log(const transfer& xfer)
  */
 class transaction_db {
 public:
+   using log_ptr = std::unique_ptr<transaction_log>;
    explicit transaction_db(const vector<account_balance>& initial_balances);
    void push_transaction(const transaction& t);
    void settle();
@@ -107,7 +119,7 @@ private:
 private:
    size_t current_transaction;
    unordered_map<size_t , account_balance> accounts;
-   vector<unique_ptr<transaction_log>> temp_log; ///< resets after every settle
+   vector<log_ptr> temp_log; ///< resets after every settle
    vector<size_t> applied_transactions;
 
 
@@ -124,7 +136,20 @@ transaction_db::transaction_db(const vector<account_balance>& initial_balances):
 
 void transaction_db::push_transaction(const transaction& t)
 {
+   const size_t num = 0;
+   log_ptr l;
+   try {
+      auto validate = [this](const transfer& xfer) {
+         return accounts.count(xfer.to) && accounts.count(xfer.from);
+      };
 
+      l = std::make_unique<transaction_log>(transaction_log(t, num, validate));
+
+   } catch (std::exception &e) {
+      std::cout << "Bad data" << std::endl;
+      return; // exit early
+   }
+   log.push_back(std::move(l));
 }
 
 void transaction_db::settle()
