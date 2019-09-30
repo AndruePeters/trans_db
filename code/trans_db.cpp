@@ -58,22 +58,29 @@ public:
    };
 
 private:
+   const std::function<bool(const transfer& xfer)>& validate_transfer;
    const size_t transaction_id;
-   void build_log(const transfer& xfer);
+   void build_log(const transaction& t);
    void add_to_log(const transfer& xfer);
    std::unordered_map<int, account_balance> log;
 };
 
-transaction_log::transaction_log(const transaction& t, const size_t trans_id,const std::function<bool(const transfer& xfer)>& validate): transaction_id(trans_id)
+transaction_log::transaction_log(const transaction& t, const size_t trans_id,const std::function<bool(const transfer& xfer)>& validate): 
+                                 transaction_id(trans_id), validate_transfer(validate)
 {
-   for (const auto& x: t) {
-      // if a single transfer is bad then drop the entire transaction since it should be atomic.
-      if (!validate(x)) {
-         throw std::invalid_argument("Could not validate account.");
+   build_log(t);
+}
+
+void transaction_log::build_log(const transaction& t)
+{
+   for (const auto& xfer: t) {
+      // if a single transfer is bad then drop the entire transaction because a transaction is atomic.
+      if (!validate_transfer(xfer)) {
+         throw std::invalid_argument("Account does not exist.");
       }
 
-      // if this succeeds then continue to build the log
-      add_to_log(x);
+      // if this succeeds then add the valid transfer to the log
+      add_to_log(xfer);
    }
 }
 
@@ -149,7 +156,7 @@ void transaction_db::push_transaction(const transaction& t)
       std::cout << "Bad data" << std::endl;
       return; // exit early
    }
-   log.push_back(std::move(l));
+   temp_log.push_back(std::move(l));
 }
 
 void transaction_db::settle()
