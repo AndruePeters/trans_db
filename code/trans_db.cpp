@@ -275,6 +275,15 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
 
 void transaction_db::settle()
 {
+   std::vector<account_balance> negatives;
+   std::cout << "Negative accounts: ";
+   for (const auto& t: *temp_log[0]) {
+      if (t.second.balance < 1) {
+         negatives.push_back(t.second);
+         std::cout << ", " << t.second.account_id;
+      }
+   }
+
 
 }
 
