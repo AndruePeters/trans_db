@@ -41,23 +41,49 @@ using transaction = vector<transfer>;
 
 /**
  * @brief Stores the net change for each account in a transaction.
+ *        If a transfer is invalid, then an std::invalid_argument error is thrown. 
+ *        This exception is caught by transaction_db in push_transaction.
+ * 
  *        transfer {1, 2, 5} equates to account_balance {1, -5} and account_balance {2, 5}.
+ *         For larger transactions and number of accounts, this method reduces spacial needs and time required to iterate through.
  *
  *        Constructor throws std::invalid_argument if input is bad.
+ *        Enforces the concept of being atomic by only allowing the constructor to build the log.
+ *
  * Reasons:
  *    Condenses a transaction into a state where the total number of entries is the  number of accounts used.
- *    Average case has less entries to process for rollback.
- *    Beneficial 
+ *       *Let there be M transfers with N unique accounts -> Only N entries will be stored.
+ *       *Fasciliates faster settle[ing] because totals are already calculated per account; no need to iterate through all transfer to find total.
+ *
+ *    Average case has less entries to process for rollback. (Only cases for really small transactions might be faster, but those aren't practical or a true concern). 
+ *    Used to verify a transaction before marking changes in the database.
+ *    Beneficial spacially and temporally. 
  */
 class transaction_log {
    using log_t = std::unordered_map<int, account_balance>;
 public:
    using const_iterator = log_t::const_iterator;
 
+   /**
+    * @brief   Builds the transaction log. Reinforces idea that a transaction is atomic and can't change.
+    * @param   t Transaction used to build the log.
+    * @param   trans_id ID used to keep track of each transaction. Stored if transaction is used when the database is settled.
+    * @param   validate Function used to verify that a transfer is valid.
+    *
+    * @throw   std::invalid_argument If a transfer is "invalid". Invalid currently means that the from and to account do not exist.
+    */
+   explicit transaction_log(const transaction& t, const size_t trans_id, const std::function<bool(const transfer& xfer)>& validate);
 
-   transaction_log(const transaction& t, const size_t trans_id, const std::function<bool(const transfer& xfer)>& validate);
-   const_iterator begin() const {return log.cbegin();};
-   const_iterator end() const { return log.cend();};
+   /**
+    * @return const_iterator to the beginning of the log.
+    */
+   const_iterator begin()  const { return log.cbegin(); }
+
+   /**
+    * @return const_iterator to the end of the log.
+    */
+   const_iterator end()    const { return log.cend(); }
+
    void dump() const {
       for (const auto& x: log) {
          std::cout << "account: " << x.second.account_id << "\tbalance: " << x.second.balance << std::endl;
@@ -65,14 +91,83 @@ public:
    };
 
 private:
-   const size_t transaction_id;
-   const std::function<bool(const transfer& xfer)>& validate_transfer;
-   log_t log;
+   const size_t transaction_id; ///< stores the unique id given to the transaction
+   const std::function<bool(const transfer& xfer)>& validate_transfer; ///< function to validate input
+   log_t log;  ///< log used to store net account changes for transaction
 
+   /**
+    * @brief Builds the log.
+    * @throw std::invalid_argument
+    */
    void build_log(const transaction& t);
+
+   /**
+    * @brief Adds a transfer to the log.
+    */
    void add_to_log(const transfer& xfer);
 };
 
+/**
+ * @brief Transactional database implementation. Follows ACID properties.
+ *
+ * 
+ * All transactions must be atomic.
+ * A "settle[d]" state cannot contain an account with a negative balance.
+ *
+ * An unordered_map is used.
+ *    * Order is not important.
+ *    * Account id can be any type
+ *    * Constant time look ups.
+ */
+class transaction_db {
+   using log_ptr = std::unique_ptr<transaction_log>;
+
+public:
+
+   /**
+    * @brief Builds the initial database state from initial_balances.
+    */
+   explicit transaction_db(const vector<account_balance>& initial_balances);
+
+   /**
+    * @brief Pushes a transaction and loads it into the database. If a single transfer is invalid, then the entire transaction is drooped.
+    */
+   void push_transaction(const transaction& t);
+
+   /**
+    * @brief Commits changes and ensures the database is in a valid state.
+    * Valid is defined as all accounts having a balance greater than 0.
+    */
+   void settle();
+
+   /**
+    * @return vector<account_balance> of current accounts.
+    */
+   vector<account_balance> get_balances() const;
+
+   /**
+    * @return vector<size_t> of all vectors that have been commited and used after a call to settle()
+    */
+   vector<size_t> get_applied_transactions() const;
+   
+private: 
+   /**
+    * @brief Updates database account balances after a transaction has been validated.
+    */
+   void apply_transaction(const transaction_log& tlog);
+
+private:
+   size_t current_transaction; ///< the current transaction
+   unordered_map<size_t , account_balance> accounts;  ///< the database of accounts
+   vector<log_ptr> temp_log; ///< resets after every settle
+   vector<size_t> applied_transactions; ///< stores applied transactions
+};
+
+
+/**
+ * Builds a transaction log and sets related varaibles.
+ * Will not catch exception thrown from build_log. This is to be handled from wherever the transaction_log constructor is called.
+ */
 transaction_log::transaction_log(const transaction& t, const size_t trans_id,const std::function<bool(const transfer& xfer)>& validate): 
                                  transaction_id(trans_id), validate_transfer(validate)
 {
@@ -80,7 +175,10 @@ transaction_log::transaction_log(const transaction& t, const size_t trans_id,con
 }
 
 
-// throws std::invalid_argument
+/**
+ * Iterates through all transfers in transaction and adds them to the log.
+ * It aborts and throws std::invalid_arugment if a transfer is found to be invalid.
+ */
 void transaction_log::build_log(const transaction& t)
 {
    for (const auto& xfer: t) {
@@ -94,14 +192,19 @@ void transaction_log::build_log(const transaction& t)
    }
 }
 
+
+/**
+ * Subtracts xfer.balance from xfer.from and adds xfer.balance to xfer.to.
+ * This function is ran after it is verified that the accounts in the transfer exist in the database.
+ */
 void transaction_log::add_to_log(const transfer& xfer)
 {
-   // if xfer.from exists then add the balance, otherwise create it
+   // if xfer.from exists then subtract the balance, otherwise create it
    if (log.count(xfer.from) ) {
       log[xfer.from].balance -= xfer.amount;
    } else {
       // does not exist, so create
-      log.insert({xfer.from, {xfer.from, 0-xfer.amount}});
+      log.insert({xfer.from, {xfer.from, -xfer.amount}});
    }
 
    // if xfer.to exists then add the balance, otherwise create it
@@ -115,60 +218,48 @@ void transaction_log::add_to_log(const transfer& xfer)
 
 
 
+
+
 /**
- * @brief Transactional database implementation.
- *
- * All transactions must be atomic.
- * A "settle[d]" state cannot contain an account with a negative balance.
+ * Builds the database from a vector.
+ * Uses std::transform to "transform" given vector to unordered_map.
  */
-class transaction_db {
-public:
-   using log_ptr = std::unique_ptr<transaction_log>;
-   explicit transaction_db(const vector<account_balance>& initial_balances);
-   void push_transaction(const transaction& t);
-   void settle();
-   vector<account_balance> get_balances() const;
-   vector<size_t> get_applied_transactions() const;
-   
-private: 
-   void apply_transaction(const transaction_log& tlog);
-
-private:
-   size_t current_transaction;
-   unordered_map<size_t , account_balance> accounts;
-   vector<log_ptr> temp_log; ///< resets after every settle
-   vector<size_t> applied_transactions;
-
-
-   
-};
-
 transaction_db::transaction_db(const vector<account_balance>& initial_balances): 
                current_transaction(0), accounts(initial_balances.size())
 {
+   // convert given initial account to the unordered_map form used internally
+   // benefits from parallel execution in a C++17 compiler if execution policy is added to std::transform
    std::transform(initial_balances.begin(), initial_balances.end(),
                   std::inserter(accounts, accounts.end()),
                   [](const auto& accnt) { return std::make_pair(accnt.account_id, accnt); });
 }
 
+/**
+ * Attemps to build a transaction log. If transaction_log throws then it returns early from the 
+ * c'tor and is not applied to the database.
+
+ * When transaction_log succeeds, t is applied to the database and the transaction log pushed into the temp_log.
+ */
 void transaction_db::push_transaction(const transaction& t)
 {
-   const size_t num = 0;
-   log_ptr l;
+   log_ptr xction_ptr; // only declared here for scope reasons
    try {
       auto validate = [this](const transfer& xfer) {
          return accounts.count(xfer.to) && accounts.count(xfer.from);
       };
 
-      l = std::make_unique<transaction_log>(transaction_log(t, num, validate));
+      xction_ptr = std::make_unique<transaction_log>(transaction_log(t, current_transaction, validate));
    } catch (std::exception &e) {
-      std::cout << "Bad data" << std::endl;
+      std::cerr << e;
       return; // exit early
    }
-   apply_transaction(*l);
-   temp_log.push_back(std::move(l));
+   apply_transaction(*xction_ptr);
+   temp_log.push_back(std::move(xction_ptr));
 }
 
+/**
+ * Changes from the most recent transaction applied to database.
+ */
 void transaction_db::apply_transaction(const transaction_log& tlog)
 {
    // pair.second is type account_balance
@@ -182,6 +273,10 @@ void transaction_db::settle()
 
 }
 
+/**
+ * Transforms map into balance and returns the built vector.
+ * **SHOULD** make used of NRVO. 
+ */
 vector<account_balance> transaction_db::get_balances() const
 {
    vector<account_balance> balances;
@@ -194,10 +289,15 @@ vector<account_balance> transaction_db::get_balances() const
    return balances;
 }
 
+/**
+ * Returns a copy of applied_transactions.
+ * Firstly copies applied_transactions and should be valid for RVO.
+ */
 vector<size_t> transaction_db::get_applied_transactions() const
 {
-   return applied_transactions;
+   return std::vector<size_t>(applied_transactions);
 }
+
 /**
  *
  * @param initial_balances - the initial balances in the database, see the above datastructures.
