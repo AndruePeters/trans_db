@@ -84,6 +84,16 @@ public:
     */
    const_iterator end()    const { return log.cend(); }
 
+   /**
+    * @return True if account_id is exists, false otherwise.
+    */
+   bool transfer_exists(const int account_id) const { return log.count(account_id); }
+
+   /**
+    * @return the net change for an account if it exists, 0 otherwise.
+    */
+   int net_change(const int account_id) const;
+
    void dump() const {
       for (const auto& x: log) {
          std::cout << "account: " << x.second.account_id << "\tbalance: " << x.second.balance << std::endl;
@@ -161,6 +171,20 @@ private:
     */
    void apply_transaction(const transaction_log& tlog);
 
+
+   /**
+    * @return vector of account_id's that have a negative balance from current database.
+    */
+   std::vector<int> get_invalid_accounts() const;
+
+   /**
+    * @return vector of account_id's that have a negative balance AFTER a simulated application of t.
+    *
+    * @param invalid_accounts Vector of account_id's that are invalid in the current state of the database.
+    * @param t    A rollback of t is simulated.
+    */
+   std::vector<int> get_invalid_accounts(const transaction_log& t) const;
+
 private:
    size_t current_transaction; ///< the current transaction
    unordered_map<size_t , account_balance> accounts;  ///< the database of accounts
@@ -218,6 +242,19 @@ void transaction_log::add_to_log(const transfer& xfer)
    } else {
       // does not exist so create
       log.insert({xfer.to, {xfer.to, xfer.amount}});
+   }
+}
+
+/**
+ * @return the net change for an account if it exists, 0 otherwise.
+ */
+int transaction_log::net_change(const int account_id) const
+{
+   auto map_it = log.find(account_id);
+   if (map_it != log.end()) {
+      return map_it->second.balance;
+   } else {
+      return 0;
    }
 }
 
@@ -323,6 +360,43 @@ void transaction_db::rollback(const transaction_log& tlog)
       accounts[t.second.account_id].balance -= t.second.balance; 
    }
 }
+
+/**
+ * @return vector of account_id's that have a negative balance from current database.
+ */
+std::vector<int> transaction_db::get_invalid_accounts() const
+{
+   std::vector<int> invalid_accounts;
+   for (const auto& xfer: accounts) {
+      if (xfer.second.balance < 0) {
+         invalid_accounts.push_back(xfer.second.account_id);
+      }
+   }
+   return invalid_accounts;
+}
+
+/**
+ * @return vector of account_id's that have a negative balance AFTER a simulated application of t.
+ *
+ * @param t    A rollback of t is simulated.
+ *
+ * invalid_accounts can use a stored version of its own return vector or the get_invalid_accounts() that accepts no arguments.
+ * This allows various simulations to happen such as trying multiple transaction_log's.
+ */
+std::vector<int> transaction_db::get_invalid_accounts(const transaction_log& t) const
+{
+   std::vector<int> invalid_accounts;
+   
+   for (const auto& x: t) {
+      auto i = accounts.find(x.second.account_id);
+      int new_difference = i->second.balance - t.net_change(x.second.balance);
+      if (new_difference < 0) {
+         invalid_accounts.push_back(i->second.account_id);
+      }
+   }
+   return invalid_accounts;
+}
+
 
 /**
  *
