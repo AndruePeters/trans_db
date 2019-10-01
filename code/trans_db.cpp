@@ -149,6 +149,11 @@ public:
     * @return vector<size_t> of all vectors that have been commited and used after a call to settle()
     */
    vector<size_t> get_applied_transactions() const;
+
+   /**
+    * @brief Rolls back transaction based on the transaction_log.
+    */
+    void rollback(const transaction_log& tlog);
    
 private: 
    /**
@@ -250,7 +255,7 @@ void transaction_db::push_transaction(const transaction& t)
 
       xction_ptr = std::make_unique<transaction_log>(transaction_log(t, current_transaction, validate));
    } catch (std::exception &e) {
-      std::cerr << e;
+      std::cerr << e.what();
       return; // exit early
    }
    apply_transaction(*xction_ptr);
@@ -296,6 +301,18 @@ vector<account_balance> transaction_db::get_balances() const
 vector<size_t> transaction_db::get_applied_transactions() const
 {
    return std::vector<size_t>(applied_transactions);
+}
+
+/**
+ * @brief Rolls back transaction based on the transaction_log.
+ *
+ * All values from tlog will exist in database.
+ */
+void transaction_db::rollback(const transaction_log& tlog)
+{
+   for (const auto& t: tlog) {
+      accounts[t.second.account_id].balance -= t.second.balance; 
+   }
 }
 
 /**
