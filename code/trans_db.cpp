@@ -361,7 +361,7 @@ void transaction_db::settle()
    // check if there are any invalid accounts in the current, intermediate database state
    // if there are none then save the transaction_id's, clear temp_log, and exit
    // 1)
-   if (get_invalid_accounts()) {
+   if (get_invalid_accounts() == 0) {
       for (const auto& x: temp_log) {
          applied_transactions.insert(x->get_transaction_id());
       }
