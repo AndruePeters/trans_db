@@ -190,7 +190,7 @@ private:
 private:
    size_t current_transaction; ///< the current transaction
    unordered_map<size_t , account_balance> accounts;  ///< the database of accounts
-   vector<log_ptr> temp_log; ///< resets after every settle
+   map<size_t, log_ptr> temp_log; ///< resets after every settle, size_t is the transaction number
    set<size_t> applied_transactions; ///< stores applied transactions and guarantees order
 };
 
@@ -298,7 +298,7 @@ void transaction_db::push_transaction(const transaction& t)
       return; // exit early
    }
    apply_transaction(*xction_ptr);
-   temp_log.push_back(std::move(xction_ptr));
+   temp_log.emplace(xction_ptr->get_transaction_id(), std::move(xction_ptr));
    ++current_transaction; // increment the current_transaction
 }
 
@@ -363,7 +363,7 @@ void transaction_db::settle()
    // 1)
    if (get_invalid_accounts() == 0) {
       for (const auto& x: temp_log) {
-         applied_transactions.insert(x->get_transaction_id());
+         applied_transactions.insert(x.second->get_transaction_id());
       }
 
       temp_log.clear();
@@ -375,8 +375,8 @@ void transaction_db::settle()
    // 2)
    std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
    std::for_each(temp_log.begin(), temp_log.end(), 
-         [idx = 0, &sia, this] (const auto& tlog_ptr) mutable {
-            sia.emplace_back(get_invalid_accounts(*tlog_ptr), idx++);
+         [&sia, this] (const auto& tlog_ptr) mutable {
+            sia.emplace_back(get_invalid_accounts(*(tlog_ptr.second)), tlog_ptr.second->get_transaction_id());
          });
 
    // sort so that the first element is the one we want to access     
@@ -389,7 +389,7 @@ void transaction_db::settle()
    rollback(*temp_log[sia.front().second]);
 
    // now delete the rollbacked transaction
-   temp_log.erase(temp_log.begin() + sia.front().second);
+   temp_log.erase(temp_log.find(sia.front().second));
 
    // now do it all again
    // 5)
