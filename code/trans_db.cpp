@@ -313,10 +313,25 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
    }
 }
 
+
+/**
+ * @brief Puts database into a valid state by removing valid transactions.
+ *
+ * Recursive algorithm implementation. For super large datasets would want a different approach.
+ * This algorithm has a greedy type implementation, but I think It could be made as a dynamic solution given more time.
+ *
+ * Algorithm Steps:
+ * 1) Check if there are any negative account balances. If not, then commit changes and exit.
+ * 2) Store the number of negative account balances in vector from simulating rolling back transactions in temp_log.
+ * 3) Sort vector based on the number invalid account balances, with the fewest at the beginning.
+ * 4) Rollback and delete the first transaction.
+ * 5) Call settle() again.
+ */
 void transaction_db::settle()
 {
    // check if there are any invalid accounts in the current, intermediate database state
    // if there are none then save the transaction_id's, clear temp_log, and exit
+   // 1)
    if (get_invalid_accounts()) {
       for (const auto& x: temp_log) {
          applied_transactions.insert(x->get_transaction_id());
@@ -327,27 +342,31 @@ void transaction_db::settle()
    }
 
    // so we have invalid accounts, so now search for the transaction that results in the smallest number of invalid accounts
-   // std::pair<vector.size(), index>
+   // std::pair<vector.size(), index to transaction in temp_log>
+   // 2)
    std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
    std::for_each(temp_log.begin(), temp_log.end(), 
          [idx = 0, &sia, this] (const auto& tlog_ptr) mutable {
             sia.emplace_back(get_invalid_accounts(*tlog_ptr), ++idx);
          });
 
-   // sort so that the first element is the one we want to access      
+   // sort so that the first element is the one we want to access     
+   // 3) 
    std::sort(sia.begin(), sia.end());
 
    // now rollback the transaction that gives the smallest number of invalid balances.
    // xxx.second contains the index
+   // 4)
    rollback(*temp_log[sia[0].second]);
 
    // now delete the rollbacked transaction
-   if (sia[0].first + 1 != sia.size()) {
+   if (sia.front().first + 1 != sia.size()) {
       std::swap(temp_log[sia[0].second], temp_log.back());
    }
    temp_log.pop_back();
 
    // now do it all again
+   // 5)
    settle();
 }
 
