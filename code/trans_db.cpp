@@ -300,6 +300,7 @@ void transaction_db::push_transaction(const transaction& t)
    }
    apply_transaction(*xction_ptr);
    temp_log.push_back(std::move(xction_ptr));
+   ++current_transaction; // increment the current_transaction
 }
 
 /**
