@@ -455,7 +455,7 @@ size_t transaction_db::get_invalid_accounts() const
  */
 size_t transaction_db::get_invalid_accounts(const transaction_log& t) const
 {
-   size_t invalid_accounts;
+   size_t invalid_accounts = 0;
    
    for (const auto& x: t) {
       auto i = accounts.find(x.second.account_id);
