@@ -84,6 +84,8 @@ public:
     */
    const_iterator end()    const { return log.cend(); }
 
+   size_t get_transaction_id() const { return transaction_id; }
+
    /**
     * @return True if account_id is exists, false otherwise.
     */
@@ -164,6 +166,7 @@ public:
     * @brief Rolls back transaction based on the transaction_log.
     */
     void rollback(const transaction_log& tlog);
+
    
 private: 
    /**
@@ -189,7 +192,7 @@ private:
    size_t current_transaction; ///< the current transaction
    unordered_map<size_t , account_balance> accounts;  ///< the database of accounts
    vector<log_ptr> temp_log; ///< resets after every settle
-   vector<size_t> applied_transactions; ///< stores applied transactions
+   set<size_t> applied_transactions; ///< stores applied transactions and guarantees order
 };
 
 
@@ -312,17 +315,45 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
 
 void transaction_db::settle()
 {
-   std::vector<account_balance> negatives;
-   std::cout << "Negative accounts: ";
-   for (const auto& t: *temp_log[0]) {
-      if (t.second.balance < 1) {
-         negatives.push_back(t.second);
-         std::cout << ", " << t.second.account_id;
+   // first get the invalid accounts in the default database
+   std::vector<int> current_accounts = get_invalid_accounts();
+
+   // no invalid accounts so lets add temp_log 
+   // transaction IDs to applied_transactions and then clear temp_log
+   if (current_accounts.empty()) {
+      for (const auto& x: temp_log) {
+         applied_transactions.insert(x->get_transaction_id());
       }
+
+      temp_log.clear();
    }
 
+   // so we have invalid accounts, so now search for the transaction that results in the smallest number of invalid accounts
+   // std::pair<vector.size(), index>
+   std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
+   std::for_each(temp_log.begin(), temp_log.end(), 
+         [idx = 0, &sia, this] (const auto& tlog_ptr) mutable {
+            //sim_invalid_accounts.emplace_back(get_invalid_accounts(*tlog_ptr), ++idx);
+            sia.emplace_back(get_invalid_accounts(*tlog_ptr).size(), ++idx);
+         });
 
+   // sort so that the first element is the one we want to access      
+   std::sort(sia.begin(), sia.end());
+
+   // now rollback the transaction that gives the smallest number of invalid balances.
+   // xxx.second contains the index
+   rollback(*temp_log[sia[0].second]);
+
+   // now delete the rollbacked transaction
+   if (sia[0].first + 1 != sia.size()) {
+      std::swap(temp_log[sia[0].second], temp_log.back());
+   }
+   temp_log.pop_back();
+
+   // now do it all again
+   settle();
 }
+
 
 /**
  * Transforms map into balance and returns the built vector.
@@ -346,7 +377,7 @@ vector<account_balance> transaction_db::get_balances() const
  */
 vector<size_t> transaction_db::get_applied_transactions() const
 {
-   return std::vector<size_t>(applied_transactions);
+   return std::vector<size_t>(applied_transactions.begin(), applied_transactions.end());
 }
 
 /**
