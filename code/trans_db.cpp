@@ -376,7 +376,7 @@ void transaction_db::settle()
    std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
    std::for_each(temp_log.begin(), temp_log.end(), 
          [idx = 0, &sia, this] (const auto& tlog_ptr) mutable {
-            sia.emplace_back(get_invalid_accounts(*tlog_ptr), ++idx);
+            sia.emplace_back(get_invalid_accounts(*tlog_ptr), idx++);
          });
 
    // sort so that the first element is the one we want to access     
@@ -393,7 +393,7 @@ void transaction_db::settle()
       std::swap(temp_log[sia.front().second], temp_log.back());
    }
    temp_log.pop_back();
-
+   
    // now do it all again
    // 5)
    settle();
