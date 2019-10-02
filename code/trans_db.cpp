@@ -442,13 +442,10 @@ void transaction_db::rollback(const transaction_log& tlog)
  */
 size_t transaction_db::get_invalid_accounts() const
 {
-   size_t invalid_accounts = 0;
-   for (const auto& xfer: accounts) {
-      if (xfer.second.balance < 0) {
-         ++invalid_accounts;
-      }
-   }
-   return invalid_accounts;
+   return  std::count_if(accounts.begin(), accounts.end(), 
+         [](const auto& xfer){
+            return xfer.second.balance < 0;
+         });
 }
 
 /**
