@@ -325,7 +325,7 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
  * 2) Store the number of negative account balances in vector from simulating rolling back transactions in temp_log.
  * 3) Sort vector based on the number invalid account balances, with the fewest at the beginning.
  * 4) Rollback and delete the first transaction.
- * 5) Call settle() again.
+ * 5) Call settle() again. (Goto step 1)
  */
 void transaction_db::settle()
 {
