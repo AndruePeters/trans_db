@@ -96,6 +96,9 @@ public:
     */
    int net_change(const int account_id) const;
 
+   /**
+    * @brief Outputs all transfers within this transaction to stdout
+    */
    void dump() const {
       for (const auto& x: log) {
          std::cout << "account: " << x.second.account_id << "\tbalance: " << x.second.balance << std::endl;
@@ -130,6 +133,13 @@ private:
  *    * Order is not important.
  *    * Account id can be any type
  *    * Constant time look ups.
+ * 
+ * 
+ * Variables:
+ *    current_transaction keeps track of the most recent transaction
+ *    accounts uses an unordered_map because order does not matter, account_id can become any type such as a string in future changes, constant time lookups
+ *    temp_log is a map to preserve ordering, quick access time. chose a map over a vector because algorithm can commonly remove elements from "middle" of bounds
+ *    applied_transactions is a set to enforce that there is a unique transaction id and will always remain ordered
  */
 class transaction_db {
    using log_ptr = std::unique_ptr<transaction_log>;
