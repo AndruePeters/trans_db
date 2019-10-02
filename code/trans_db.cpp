@@ -389,10 +389,6 @@ void transaction_db::settle()
    rollback(*temp_log[sia.front().second]);
 
    // now delete the rollbacked transaction
-   /*if (sia.front().first + 1 != sia.size()) {
-      std::swap(temp_log[sia.front().second], temp_log.back());
-   }
-   temp_log.pop_back();*/
    temp_log.erase(temp_log.begin() + sia.front().second);
 
    // now do it all again
