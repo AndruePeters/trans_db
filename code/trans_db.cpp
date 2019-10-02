@@ -327,6 +327,7 @@ void transaction_db::settle()
       }
 
       temp_log.clear();
+      return;
    }
 
    // so we have invalid accounts, so now search for the transaction that results in the smallest number of invalid accounts
