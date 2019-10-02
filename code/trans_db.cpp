@@ -317,15 +317,44 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
 /**
  * @brief Puts database into a valid state by removing valid transactions.
  *
- * Recursive algorithm implementation. For super large datasets would want a different approach.
- * This algorithm has a greedy type implementation, but I think It could be made as a dynamic solution given more time.
- *
  * Algorithm Steps:
  * 1) Check if there are any negative account balances. If not, then commit changes and exit.
  * 2) Store the number of negative account balances in vector from simulating rolling back transactions in temp_log.
  * 3) Sort vector based on the number invalid account balances, with the fewest at the beginning.
  * 4) Rollback and delete the first transaction.
  * 5) Call settle() again. (Goto step 1)
+ *
+ * Main Assumption for Algorithm: Choosing results by fewest possible invalid accounts will lead to fewer transactions being rolled back.
+ *
+ * Thoughts:
+ *    Performance could probably be improved by storing information when a transaction is applied at an intermediate step.
+ *    However, the challenge here is finding an optimal solution without calculating every single combination.
+ *          For example, assume there are three transactions {A, B, C}. 
+ *             Calling get_invalid_accounts() changes for every unique intermediate state.
+ *             In other words, get_invalid_accounts(A) != get_invalid_accounts(A) if B is rolled back.
+ *             This is because get_invalid_accounts(transaction) returns the number of invalid accounts by
+ *                simulating a rollback of that transaction.
+ *
+ *    Because of this, I thought it would be good if a local optimal was chosen until a solution is found.
+ *    This approach does not guarantee that the global optimal solution is found.
+ *       Example: Assume this algorithm uses four transactions {A, B, C, D}.
+ *                Possible solution is to rollback in the following order {D, C, B}.
+ *                This solution means that in the first pass, D had the least simulated invalid accounts, C in the second pass, and then B.
+ *                However, the solution to rolling back the fewest transactions could be {A}, where A had the most invalid accounts in the first pass.
+ *                Since this algorithm does not check future possibilities, the shortest solution was not found.
+ *
+ *    Could most likely reimplement this algorithm as a dynamic algorithm and find the optimal solution.
+ *          To do this would mean changing my criteria from the number of invalid accounts to the number of transactions needed to rollback.
+ *          Instead of get_invalid_accounts(), I'd define has_invalid_accounts(), which would return as soon as a single invalid account is found, thereby improving time complexity.
+ *                Although, worst case would still be the same O(M) where M is the number of accounts in a transaction.
+ *          This basically transforms this problem into a shortest path problem.
+ *          Again, this biggest issue is that order of rollback matters and changes the state completely, so memoization might not be possible.
+ *
+ *    A brute force method would be possible to implement, but would scale very poorly as it would compute N! situtations where N is the number of transactions.
+ *       Maybe I could look a few steps into the future to choose the best solution?
+ *
+ *    One approach I started to use looked at the specific accounts that were invalid; however, this fails because a transaction that fixes account 1 might make account 2 negative.
+ *
  */
 void transaction_db::settle()
 {
@@ -342,7 +371,7 @@ void transaction_db::settle()
    }
 
    // so we have invalid accounts, so now search for the transaction that results in the smallest number of invalid accounts
-   // std::pair<vector.size(), index to transaction in temp_log>
+   // std::pair<vector.size(), index to transaction in temp_log>; idx is the current index
    // 2)
    std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
    std::for_each(temp_log.begin(), temp_log.end(), 
@@ -357,11 +386,11 @@ void transaction_db::settle()
    // now rollback the transaction that gives the smallest number of invalid balances.
    // xxx.second contains the index
    // 4)
-   rollback(*temp_log[sia[0].second]);
+   rollback(*temp_log[sia.front().second]);
 
    // now delete the rollbacked transaction
    if (sia.front().first + 1 != sia.size()) {
-      std::swap(temp_log[sia[0].second], temp_log.back());
+      std::swap(temp_log[sia.front().second], temp_log.back());
    }
    temp_log.pop_back();
 
