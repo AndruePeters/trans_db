@@ -364,7 +364,7 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
  *       Maybe I could look a few steps into the future to choose the best solution?
  *
  *    One approach I started to use looked at the specific accounts that were invalid; however, this fails because a transaction that fixes account 1 might make account 2 negative.
- *
+ *    Could easily make this algorithm iterative if I needed to. It would be in form while (get_invalid_accounts()) { // do stuff}
  */
 void transaction_db::settle()
 {
