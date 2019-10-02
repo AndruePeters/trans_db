@@ -176,17 +176,16 @@ private:
 
 
    /**
-    * @return vector of account_id's that have a negative balance from current database.
+    * @return number of account_id's that have a negative balance from current database.
     */
-   std::vector<int> get_invalid_accounts() const;
+   size_t get_invalid_accounts() const;
 
    /**
-    * @return vector of account_id's that have a negative balance AFTER a simulated application of t.
+    * @return number of account_id's that have a negative balance AFTER a simulated application of t.
     *
-    * @param invalid_accounts Vector of account_id's that are invalid in the current state of the database.
     * @param t    A rollback of t is simulated.
     */
-   std::vector<int> get_invalid_accounts(const transaction_log& t) const;
+   size_t get_invalid_accounts(const transaction_log& t) const;
 
 private:
    size_t current_transaction; ///< the current transaction
@@ -316,12 +315,9 @@ void transaction_db::apply_transaction(const transaction_log& tlog)
 
 void transaction_db::settle()
 {
-   // first get the invalid accounts in the default database
-   std::vector<int> current_accounts = get_invalid_accounts();
-
-   // no invalid accounts so lets add temp_log 
-   // transaction IDs to applied_transactions and then clear temp_log
-   if (current_accounts.empty()) {
+   // check if there are any invalid accounts in the current, intermediate database state
+   // if there are none then save the transaction_id's, clear temp_log, and exit
+   if (get_invalid_accounts()) {
       for (const auto& x: temp_log) {
          applied_transactions.insert(x->get_transaction_id());
       }
@@ -335,8 +331,7 @@ void transaction_db::settle()
    std::vector<std::pair<size_t, size_t>> sia; ///< simulated invalid accounts
    std::for_each(temp_log.begin(), temp_log.end(), 
          [idx = 0, &sia, this] (const auto& tlog_ptr) mutable {
-            //sim_invalid_accounts.emplace_back(get_invalid_accounts(*tlog_ptr), ++idx);
-            sia.emplace_back(get_invalid_accounts(*tlog_ptr).size(), ++idx);
+            sia.emplace_back(get_invalid_accounts(*tlog_ptr), ++idx);
          });
 
    // sort so that the first element is the one we want to access      
@@ -395,36 +390,33 @@ void transaction_db::rollback(const transaction_log& tlog)
 }
 
 /**
- * @return vector of account_id's that have a negative balance from current database.
+ * @return number of account_id's that have a negative balance from current database.
  */
-std::vector<int> transaction_db::get_invalid_accounts() const
+size_t transaction_db::get_invalid_accounts() const
 {
-   std::vector<int> invalid_accounts;
+   size_t invalid_accounts = 0;
    for (const auto& xfer: accounts) {
       if (xfer.second.balance < 0) {
-         invalid_accounts.push_back(xfer.second.account_id);
+         ++invalid_accounts;
       }
    }
    return invalid_accounts;
 }
 
 /**
- * @return vector of account_id's that have a negative balance AFTER a simulated application of t.
+ * @return number of account_id's that have a negative balance AFTER a simulated application of t.
  *
  * @param t    A rollback of t is simulated.
- *
- * invalid_accounts can use a stored version of its own return vector or the get_invalid_accounts() that accepts no arguments.
- * This allows various simulations to happen such as trying multiple transaction_log's.
  */
-std::vector<int> transaction_db::get_invalid_accounts(const transaction_log& t) const
+size_t transaction_db::get_invalid_accounts(const transaction_log& t) const
 {
-   std::vector<int> invalid_accounts;
+   size_t invalid_accounts;
    
    for (const auto& x: t) {
       auto i = accounts.find(x.second.account_id);
       int new_difference = i->second.balance - t.net_change(x.second.balance);
       if (new_difference < 0) {
-         invalid_accounts.push_back(i->second.account_id);
+        ++invalid_accounts;
       }
    }
    return invalid_accounts;
